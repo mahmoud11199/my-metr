@@ -3,15 +3,17 @@
 // منطق الملف: إنشاء اتصال آمن بقاعدة البيانات باستخدام PDO
 // يُستخدم في جميع ملفات النظام لتنفيذ العمليات على قاعدة البيانات
 
+require_once __DIR__ . '/../env.php';
+
 // بدء الجلسة لتتبع المستخدم الحالي
 session_start();
 
-// إعدادات الاتصال بقاعدة البيانات
-$host = 'sql301.iceiy.com'; // عنوان السيرفر (عادة localhost)
-$db   = 'icei_40193589_mahmoud'; // اسم قاعدة البيانات التي أنشأتها
-$user = 'icei_40193589'; // اسم المستخدم في الاستضافة
-$pass = '01206451010mM'; // كلمة المرور الخاصة بقاعدة البيانات
-$charset = 'utf8mb4'; // ترميز يدعم اللغة العربية والرموز
+// إعدادات الاتصال بقاعدة البيانات عبر متغيرات البيئة
+$host = env_value('DB_HOST', '127.0.0.1');
+$db   = env_value('DB_NAME', 'my_metr');
+$user = env_value('DB_USER', 'root');
+$pass = env_value('DB_PASS', '');
+$charset = env_value('DB_CHARSET', 'utf8mb4');
 
 // إنشاء سلسلة الاتصال باستخدام PDO
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
