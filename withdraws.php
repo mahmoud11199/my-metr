@@ -7,6 +7,11 @@ include 'header.php';
 
 
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     die("صلاحية غير كافية.");
 }
@@ -47,8 +52,16 @@ $result = $conn->query("SELECT w.id, u.name, w.amount, w.method, w.account_info,
       <td><?php echo $row['created_at']; ?></td>
       <td>
         <?php if ($row['status'] === 'pending'): ?>
-          <a href="approve_withdraw.php?id=<?php echo $row['id']; ?>">✅ موافقة</a> |
-          <a href="reject_withdraw.php?id=<?php echo $row['id']; ?>">❌ رفض</a>
+          <form method="post" action="approve_withdraw.php" style="display:inline;">
+            <input type="hidden" name="id" value="<?php echo (int)$row['id']; ?>">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <button type="submit">✅ موافقة</button>
+          </form>
+          <form method="post" action="reject_withdraw.php" style="display:inline;">
+            <input type="hidden" name="id" value="<?php echo (int)$row['id']; ?>">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+            <button type="submit">❌ رفض</button>
+          </form>
         <?php else: ?>
           تم المراجعة
         <?php endif; ?>

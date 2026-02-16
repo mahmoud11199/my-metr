@@ -9,6 +9,11 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = (int)$_SESSION['user_id'];
 $role    = $_SESSION['role'] ?? null;
 
+if (empty($_SESSION['csrf_token'])) {
+  $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 // بناء الاستعلام حسب الدور
 if ($role === 'admin') {
   $sql = "SELECT r.*, v.number AS vcash_number
@@ -73,8 +78,16 @@ $res = $conn->query($sql);
         <td><?= $r['reviewed_at'] ? htmlspecialchars($r['reviewed_at']) : '—' ?></td>
         <td>
           <?php if ($role === 'admin' && $r['status'] === 'pending'): ?>
-            <a href="approve_recharge.php?id=<?= $r['id'] ?>">موافقة</a> |
-            <a href="reject_recharge.php?id=<?= $r['id'] ?>">رفض</a>
+            <form method="post" action="approve_recharge.php" style="display:inline;">
+              <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
+              <button type="submit">موافقة</button>
+            </form>
+            <form method="post" action="reject_recharge.php" style="display:inline;">
+              <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
+              <button type="submit">رفض</button>
+            </form>
           <?php else: ?>
             —
           <?php endif; ?>

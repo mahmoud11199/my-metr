@@ -2,48 +2,69 @@
 session_start();
 require_once 'config.php';
 
-$page_title = "عنوان الصفحة"; // اختياري لتغيير عنوان الصفحة
-include 'header.php';
-
-
-
-
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'admin') {
     die("صلاحية غير كافية.");
 }
 
-$admin_id = $_SESSION['user_id'];
-$request_id = $_GET['id'] ?? 0;
-
-// جلب الطلب
-$stmt = $conn->prepare("SELECT user_id, amount FROM withdraw_requests WHERE id = ? AND status = 'pending'");
-$stmt->bind_param("i", $request_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows === 0) {
-    die("الطلب غير موجود أو تم مراجعته.");
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    die("طريقة الطلب غير مسموحة.");
 }
 
-$request = $result->fetch_assoc();
-$user_id = $request['user_id'];
-$amount = $request['amount'];
+$csrf = $_POST['csrf_token'] ?? '';
+if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
+    http_response_code(403);
+    die("طلب غير موثق.");
+}
 
-// خصم الرصيد
-$conn->query("UPDATE users SET balance = balance - $amount WHERE id = $user_id");
+$admin_id = (int)$_SESSION['user_id'];
+$request_id = (int)($_POST['id'] ?? 0);
 
-// تحديث الطلب
-$conn->query("UPDATE withdraw_requests 
-              SET status = 'approved', reviewed_at = NOW(), reviewed_by = $admin_id 
-              WHERE id = $request_id");
+if ($request_id <= 0) {
+    die("طلب غير صالح.");
+}
 
-// تسجيل العملية
-$conn->query("INSERT INTO transactions (user_id, type, amount, description, created_at) 
-              VALUES ($user_id, 'withdraw', $amount, 'سحب عن طريق الأدمن', NOW())");
+$conn->begin_transaction();
 
-header("Location: withdraws.php");
-exit;
+try {
+    $stmt = $conn->prepare("SELECT id, user_id, amount, status FROM withdraw_requests WHERE id = ? FOR UPDATE");
+    $stmt->bind_param("i", $request_id);
+    $stmt->execute();
+    $request = $stmt->get_result()->fetch_assoc();
 
-include 'footer.php';
+    if (!$request || $request['status'] !== 'pending') {
+        throw new Exception("الطلب غير موجود أو تم مراجعته.");
+    }
 
+    $user_id = (int)$request['user_id'];
+    $amount = (float)$request['amount'];
+
+    $stmt = $conn->prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?");
+    $stmt->bind_param("did", $amount, $user_id, $amount);
+    $stmt->execute();
+
+    if ($stmt->affected_rows === 0) {
+        throw new Exception("الرصيد غير كافٍ لتنفيذ السحب وقت الموافقة.");
+    }
+
+    $stmt = $conn->prepare("UPDATE withdraw_requests SET status = 'approved', reviewed_at = NOW(), reviewed_by = ? WHERE id = ? AND status = 'pending'");
+    $stmt->bind_param("ii", $admin_id, $request_id);
+    $stmt->execute();
+
+    if ($stmt->affected_rows === 0) {
+        throw new Exception("تعذر تحديث حالة طلب السحب.");
+    }
+
+    $desc = "سحب معتمد بواسطة الأدمن (طلب #{$request_id})";
+    $stmt = $conn->prepare("INSERT INTO transactions (user_id, type, amount, description, created_at) VALUES (?, 'withdraw', ?, ?, NOW())");
+    $stmt->bind_param("ids", $user_id, $amount, $desc);
+    $stmt->execute();
+
+    $conn->commit();
+    header("Location: withdraws.php");
+    exit;
+} catch (Exception $e) {
+    $conn->rollback();
+    die("❌ " . $e->getMessage());
+}
 ?>
